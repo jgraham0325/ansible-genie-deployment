@@ -1,0 +1,17 @@
+# Workspace connection: the host is read from this CLI profile at runtime
+# (set databricks_host here to override it)
+databricks_profile: field-eng-east
+
+# Which warehouse Genie spaces run on. They're registered under
+# genie_parent_path, which defaults to /Workspace/Users/<you>/ansible_genie.
+genie_warehouse_name: Shared Endpoint
+
+# String replacements applied to every agent JSON before deploy, e.g.
+#   genie_catalog_remap: {"dev_catalog.": "prod_catalog."}
+genie_catalog_remap: {}
+
+# Agents to manage in this workspace (title is the idempotency key)
+genie_agents:
+  - title: "[Ansible PoC] TPC-H Sales Analytics"
+    description: "Sales analytics over samples.tpch, deployed by Ansible."
+    file: "{{ playbook_dir }}/../agents/tpch_sales_analytics.json"

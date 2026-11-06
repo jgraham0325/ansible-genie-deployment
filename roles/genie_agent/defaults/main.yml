@@ -1,0 +1,13 @@
+# present = create/update agents, absent = trash them
+genie_state: present
+
+genie_warehouse_name: Shared Endpoint
+# databricks_user is looked up at runtime from the SCIM Me endpoint
+genie_parent_path: "/Workspace/Users/{{ databricks_user }}/ansible_genie"
+genie_catalog_remap: {}
+genie_agents: []
+
+# Local file mapping agent title -> space_id for this workspace
+genie_state_file: "{{ playbook_dir }}/../state/{{ databricks_profile }}.json"
+
+databricks_api_timeout: 60

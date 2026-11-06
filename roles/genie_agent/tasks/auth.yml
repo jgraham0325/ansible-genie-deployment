@@ -1,0 +1,28 @@
+- name: Read workspace host from profile {{ databricks_profile }}
+  ansible.builtin.command:
+    argv: [databricks, auth, env, --profile, "{{ databricks_profile }}", -o, json]
+  register: _auth_env
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: databricks_host is not defined
+
+- name: Store workspace host
+  ansible.builtin.set_fact:
+    databricks_host: "{{ (_auth_env.stdout | from_json).env.DATABRICKS_HOST | regex_replace('/$', '') }}"
+  when: databricks_host is not defined
+
+# Uses the CLI's cached U2M OAuth login to mint a short-lived access token.
+# The token only lives in memory as a fact and is never logged or written.
+- name: Get OAuth token for profile {{ databricks_profile }}
+  ansible.builtin.command:
+    argv: [databricks, auth, token, "{{ databricks_profile }}", -o, json]
+  register: _token_cmd
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Store token
+  ansible.builtin.set_fact:
+    databricks_token: "{{ (_token_cmd.stdout | from_json).access_token }}"
+  no_log: true

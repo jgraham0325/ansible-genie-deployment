@@ -1,0 +1,31 @@
+- name: Look up space id for "{{ agent.title }}"
+  ansible.builtin.set_fact:
+    _space_id: "{{ genie_space_ids[agent.title] | default('') }}"
+
+- name: Would trash space "{{ agent.title }}"
+  ansible.builtin.debug:
+    msg: "check mode: space {{ _space_id }} would be trashed"
+  changed_when: true
+  when: ansible_check_mode and _space_id | length > 0
+
+- name: Trash space "{{ agent.title }}"
+  when: _space_id | length > 0 and not ansible_check_mode
+  block:
+    - name: Trash space "{{ agent.title }}"
+      ansible.builtin.uri:
+        url: "{{ databricks_host }}/api/2.0/genie/spaces/{{ _space_id }}"
+        method: DELETE
+        status_code: [200, 404]
+      register: _deleted
+      changed_when: _deleted.status == 200
+      no_log: "{{ not (ansible_verbosity > 2) }}"
+
+    - name: Drop space id
+      ansible.builtin.set_fact:
+        genie_space_ids: "{{ genie_space_ids | dict2items | rejectattr('key', 'equalto', agent.title) | items2dict }}"
+
+    - name: Save state file
+      ansible.builtin.copy:
+        content: "{{ genie_space_ids | to_nice_json }}\n"
+        dest: "{{ genie_state_file }}"
+        mode: "0644"

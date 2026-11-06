@@ -1,0 +1,7 @@
+- name: Deploy Genie agents
+  hosts: field_eng_east
+  gather_facts: false
+  roles:
+    - role: genie_agent
+      vars:
+        genie_state: present

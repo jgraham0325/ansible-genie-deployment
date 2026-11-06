@@ -1,0 +1,73 @@
+- name: Authenticate to Databricks
+  ansible.builtin.include_tasks: auth.yml
+
+# module_defaults injects the auth header and common options into every
+# ansible.builtin.uri call in this block (including included task files).
+- name: Manage Genie agents
+  module_defaults:
+    ansible.builtin.uri:
+      headers:
+        Authorization: "Bearer {{ databricks_token }}"
+      return_content: true
+      timeout: "{{ databricks_api_timeout }}"
+  block:
+    - name: Look up current user
+      ansible.builtin.uri:
+        url: "{{ databricks_host }}/api/2.0/preview/scim/v2/Me"
+      check_mode: false
+      register: _me
+      no_log: "{{ not (ansible_verbosity > 2) }}"
+
+    - name: Store current user
+      ansible.builtin.set_fact:
+        databricks_user: "{{ _me.json.userName }}"
+
+    - name: List SQL warehouses
+      ansible.builtin.uri:
+        url: "{{ databricks_host }}/api/2.0/sql/warehouses"
+      check_mode: false
+      register: _warehouses
+      no_log: "{{ not (ansible_verbosity > 2) }}"
+
+    - name: Resolve warehouse "{{ genie_warehouse_name }}"
+      ansible.builtin.set_fact:
+        genie_warehouse_id: "{{ _matches[0].id }}"
+      vars:
+        _matches: "{{ _warehouses.json.warehouses | selectattr('name', 'equalto', genie_warehouse_name) | list }}"
+      failed_when: _matches | length != 1
+
+    - name: Ensure parent folder exists
+      ansible.builtin.uri:
+        url: "{{ databricks_host }}/api/2.0/workspace/mkdirs"
+        method: POST
+        body_format: json
+        body:
+          path: "{{ genie_parent_path }}"
+      changed_when: false
+      when: genie_state == 'present' and not ansible_check_mode
+      no_log: "{{ not (ansible_verbosity > 2) }}"
+
+    - name: Check for local state file
+      ansible.builtin.stat:
+        path: "{{ genie_state_file }}"
+      register: _state_stat
+
+    - name: Load space ids from state file
+      ansible.builtin.set_fact:
+        genie_space_ids: "{{ (lookup('file', genie_state_file) | from_json) if _state_stat.stat.exists else {} }}"
+
+    - name: Deploy agents
+      ansible.builtin.include_tasks: deploy_agent.yml
+      loop: "{{ genie_agents }}"
+      loop_control:
+        loop_var: agent
+        label: "{{ agent.title }}"
+      when: genie_state == 'present'
+
+    - name: Remove agents
+      ansible.builtin.include_tasks: remove_agent.yml
+      loop: "{{ genie_agents }}"
+      loop_control:
+        loop_var: agent
+        label: "{{ agent.title }}"
+      when: genie_state == 'absent'

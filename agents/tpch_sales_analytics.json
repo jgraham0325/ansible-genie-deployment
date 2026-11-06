@@ -1,0 +1,157 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {"id": "a0000000000000000000000000000001", "question": ["What was total net revenue by year?"]},
+      {"id": "a0000000000000000000000000000002", "question": ["Who are the top 10 customers by total order value?"]},
+      {"id": "a0000000000000000000000000000003", "question": ["Which market segment has the most orders?"]}
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "identifier": "samples.tpch.customer",
+        "description": ["Customers with their market segment, nation and account balance."],
+        "column_configs": [
+          {"column_name": "c_acctbal", "description": ["Customer account balance in USD."], "synonyms": ["account balance", "balance"]},
+          {"column_name": "c_mktsegment", "description": ["Customer market segment."], "synonyms": ["segment", "market segment"], "enable_format_assistance": true, "enable_entity_matching": true},
+          {"column_name": "c_name", "synonyms": ["customer name", "customer"]}
+        ]
+      },
+      {
+        "identifier": "samples.tpch.lineitem",
+        "description": ["Order line items. One row per product line on an order; source of revenue."],
+        "column_configs": [
+          {"column_name": "l_discount", "description": ["Discount as a fraction (0.05 = 5%)."]},
+          {"column_name": "l_extendedprice", "description": ["Gross line price before discount."], "synonyms": ["gross price"]},
+          {"column_name": "l_shipmode", "synonyms": ["shipping method", "ship mode"], "enable_format_assistance": true, "enable_entity_matching": true}
+        ]
+      },
+      {
+        "identifier": "samples.tpch.nation",
+        "column_configs": [
+          {"column_name": "n_name", "synonyms": ["country", "nation"], "enable_format_assistance": true, "enable_entity_matching": true}
+        ]
+      },
+      {
+        "identifier": "samples.tpch.orders",
+        "description": ["Order headers: customer, date, status, priority and total price."],
+        "column_configs": [
+          {"column_name": "o_orderdate", "synonyms": ["order date", "date"]},
+          {"column_name": "o_orderstatus", "description": ["F = fulfilled, O = open, P = partially fulfilled."], "synonyms": ["status"], "enable_format_assistance": true},
+          {"column_name": "o_totalprice", "description": ["Total order value in USD."], "synonyms": ["order value", "order total"]}
+        ]
+      },
+      {
+        "identifier": "samples.tpch.region",
+        "column_configs": [
+          {"column_name": "r_name", "synonyms": ["region"], "enable_format_assistance": true, "enable_entity_matching": true}
+        ]
+      }
+    ]
+  },
+  "instructions": {
+    "text_instructions": [
+      {
+        "id": "b0000000000000000000000000000001",
+        "content": [
+          "This agent answers sales questions over the TPC-H sample dataset.\n",
+          "Net revenue = SUM(lineitem.l_extendedprice * (1 - lineitem.l_discount)). Use this whenever a user asks about revenue or sales, unless they say 'order value', which means orders.o_totalprice.\n",
+          "Order status codes: F = fulfilled, O = open, P = partially fulfilled.\n",
+          "Geography: customer -> nation (c_nationkey) -> region (n_regionkey). Show nation and region names, not keys.\n",
+          "Round currency values to 2 decimal places."
+        ]
+      }
+    ],
+    "example_question_sqls": [
+      {
+        "id": "b0000000000000000000000000000002",
+        "question": ["What was total net revenue by year?"],
+        "sql": [
+          "SELECT YEAR(orders.o_orderdate) AS order_year,\n",
+          "       ROUND(SUM(lineitem.l_extendedprice * (1 - lineitem.l_discount)), 2) AS net_revenue\n",
+          "FROM samples.tpch.orders AS orders\n",
+          "JOIN samples.tpch.lineitem AS lineitem ON lineitem.l_orderkey = orders.o_orderkey\n",
+          "GROUP BY YEAR(orders.o_orderdate)\n",
+          "ORDER BY order_year"
+        ]
+      },
+      {
+        "id": "b0000000000000000000000000000003",
+        "question": ["What is net revenue by region?"],
+        "sql": [
+          "SELECT region.r_name AS region,\n",
+          "       ROUND(SUM(lineitem.l_extendedprice * (1 - lineitem.l_discount)), 2) AS net_revenue\n",
+          "FROM samples.tpch.lineitem AS lineitem\n",
+          "JOIN samples.tpch.orders AS orders ON lineitem.l_orderkey = orders.o_orderkey\n",
+          "JOIN samples.tpch.customer AS customer ON orders.o_custkey = customer.c_custkey\n",
+          "JOIN samples.tpch.nation AS nation ON customer.c_nationkey = nation.n_nationkey\n",
+          "JOIN samples.tpch.region AS region ON nation.n_regionkey = region.r_regionkey\n",
+          "GROUP BY region.r_name\n",
+          "ORDER BY net_revenue DESC"
+        ]
+      }
+    ],
+    "join_specs": [
+      {
+        "id": "b0000000000000000000000000000004",
+        "left": {"identifier": "samples.tpch.customer", "alias": "customer"},
+        "right": {"identifier": "samples.tpch.orders", "alias": "orders"},
+        "sql": ["`customer`.`c_custkey` = `orders`.`o_custkey`", "--rt=FROM_RELATIONSHIP_TYPE_ONE_TO_MANY--"]
+      },
+      {
+        "id": "b0000000000000000000000000000005",
+        "left": {"identifier": "samples.tpch.orders", "alias": "orders"},
+        "right": {"identifier": "samples.tpch.lineitem", "alias": "lineitem"},
+        "sql": ["`orders`.`o_orderkey` = `lineitem`.`l_orderkey`", "--rt=FROM_RELATIONSHIP_TYPE_ONE_TO_MANY--"]
+      },
+      {
+        "id": "b0000000000000000000000000000006",
+        "left": {"identifier": "samples.tpch.customer", "alias": "customer"},
+        "right": {"identifier": "samples.tpch.nation", "alias": "nation"},
+        "sql": ["`customer`.`c_nationkey` = `nation`.`n_nationkey`", "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"]
+      },
+      {
+        "id": "b0000000000000000000000000000007",
+        "left": {"identifier": "samples.tpch.nation", "alias": "nation"},
+        "right": {"identifier": "samples.tpch.region", "alias": "region"},
+        "sql": ["`nation`.`n_regionkey` = `region`.`r_regionkey`", "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"]
+      }
+    ],
+    "sql_snippets": {
+      "filters": [
+        {"id": "b0000000000000000000000000000008", "display_name": "Fulfilled orders", "sql": ["orders.o_orderstatus = 'F'"], "synonyms": ["completed orders", "closed orders"]}
+      ],
+      "measures": [
+        {"id": "b0000000000000000000000000000009", "alias": "net_revenue", "display_name": "Net Revenue", "sql": ["SUM(lineitem.l_extendedprice * (1 - lineitem.l_discount))"], "synonyms": ["revenue", "sales", "net sales"]}
+      ]
+    }
+  },
+  "benchmarks": {
+    "questions": [
+      {
+        "id": "c0000000000000000000000000000001",
+        "question": ["How many orders were placed in each market segment?"],
+        "answer": [{"format": "SQL", "content": [
+          "SELECT customer.c_mktsegment, COUNT(*) AS order_count\n",
+          "FROM samples.tpch.orders AS orders\n",
+          "JOIN samples.tpch.customer AS customer ON orders.o_custkey = customer.c_custkey\n",
+          "GROUP BY customer.c_mktsegment\n",
+          "ORDER BY order_count DESC"
+        ]}]
+      },
+      {
+        "id": "c0000000000000000000000000000002",
+        "question": ["Who are the top 10 customers by total order value?"],
+        "answer": [{"format": "SQL", "content": [
+          "SELECT customer.c_name, ROUND(SUM(orders.o_totalprice), 2) AS total_order_value\n",
+          "FROM samples.tpch.orders AS orders\n",
+          "JOIN samples.tpch.customer AS customer ON orders.o_custkey = customer.c_custkey\n",
+          "GROUP BY customer.c_name\n",
+          "ORDER BY total_order_value DESC\n",
+          "LIMIT 10"
+        ]}]
+      }
+    ]
+  }
+}

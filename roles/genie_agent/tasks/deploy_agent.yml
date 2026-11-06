@@ -1,0 +1,103 @@
+- name: Build desired definition for "{{ agent.title }}"
+  ansible.builtin.set_fact:
+    # Ansible may already have converted the JSON text to a dict when templating
+    _desired_space: "{{ _remapped if _remapped is mapping else _remapped | from_json }}"
+    _space_id: "{{ genie_space_ids[agent.title] | default('') }}"
+  vars:
+    _remapped: >-
+      {%- set s = namespace(v=lookup('file', agent.file)) -%}
+      {%- for old, new in genie_catalog_remap.items() -%}
+      {%- set s.v = s.v | replace(old, new) -%}
+      {%- endfor -%}
+      {{ s.v }}
+
+- name: Get current space
+  ansible.builtin.uri:
+    url: "{{ databricks_host }}/api/2.0/genie/spaces/{{ _space_id }}?include_serialized_space=true"
+    status_code: [200, 404]
+  check_mode: false
+  register: _current
+  when: _space_id | length > 0
+  no_log: "{{ not (ansible_verbosity > 2) }}"
+
+# The API returns benchmarks.questions in its own order, so sort both sides by
+# id before comparing. Everything else round-trips exactly.
+- name: Work out what needs to change
+  ansible.builtin.set_fact:
+    _exists: "{{ _found }}"
+    _drift: >-
+      {{ _found and (
+           _current_norm != _desired_norm
+           or _current.json.title != agent.title
+           or (_current.json.description | default('')) != (agent.description | default(''))
+           or _current.json.warehouse_id != genie_warehouse_id) }}
+  vars:
+    _found: "{{ _current.status | default(0) == 200 }}"
+    _current_space: "{{ (_current.json.serialized_space | from_json) if _found else {} }}"
+    _current_norm: >-
+      {{ _current_space | combine({'benchmarks': {'questions':
+           _current_space.benchmarks.questions | default([]) | sort(attribute='id')}}, recursive=true) }}
+    _desired_norm: >-
+      {{ _desired_space | combine({'benchmarks': {'questions':
+           _desired_space.benchmarks.questions | default([]) | sort(attribute='id')}}, recursive=true) }}
+
+# uri has no check mode support, so report planned changes explicitly
+- name: Would create space "{{ agent.title }}"
+  ansible.builtin.debug:
+    msg: "check mode: space would be created"
+  changed_when: true
+  when: ansible_check_mode and not _exists
+
+- name: Would update space "{{ agent.title }}"
+  ansible.builtin.debug:
+    msg: "check mode: space {{ _space_id }} would be updated"
+  changed_when: true
+  when: ansible_check_mode and _exists and _drift
+
+- name: Create space
+  when: not _exists and not ansible_check_mode
+  block:
+    - name: Create space "{{ agent.title }}"
+      ansible.builtin.uri:
+        url: "{{ databricks_host }}/api/2.0/genie/spaces"
+        method: POST
+        body_format: json
+        body:
+          title: "{{ agent.title }}"
+          description: "{{ agent.description | default('') }}"
+          warehouse_id: "{{ genie_warehouse_id }}"
+          parent_path: "{{ genie_parent_path }}"
+          serialized_space: "{{ _desired_space | to_json }}"
+      register: _created
+      changed_when: true
+      no_log: "{{ not (ansible_verbosity > 2) }}"
+
+    - name: Record new space id
+      ansible.builtin.set_fact:
+        _space_id: "{{ _created.json.space_id }}"
+        genie_space_ids: "{{ genie_space_ids | combine({agent.title: _created.json.space_id}) }}"
+
+    - name: Save state file
+      ansible.builtin.copy:
+        content: "{{ genie_space_ids | to_nice_json }}\n"
+        dest: "{{ genie_state_file }}"
+        mode: "0644"
+
+- name: Update space "{{ agent.title }}"
+  ansible.builtin.uri:
+    url: "{{ databricks_host }}/api/2.0/genie/spaces/{{ _space_id }}"
+    method: PATCH
+    body_format: json
+    body:
+      title: "{{ agent.title }}"
+      description: "{{ agent.description | default('') }}"
+      warehouse_id: "{{ genie_warehouse_id }}"
+      serialized_space: "{{ _desired_space | to_json }}"
+  changed_when: true
+  when: _exists and _drift and not ansible_check_mode
+  no_log: "{{ not (ansible_verbosity > 2) }}"
+
+- name: Show space URL
+  ansible.builtin.debug:
+    msg: "{{ agent.title }}: {{ databricks_host }}/genie/rooms/{{ _space_id }}"
+  when: _space_id | length > 0
