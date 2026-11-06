@@ -6,9 +6,11 @@ databricks_profile: field-eng-east
 # genie_parent_path, which defaults to /Workspace/Users/<you>/ansible_genie.
 genie_warehouse_name: Shared Endpoint
 
-# String replacements applied to every agent JSON before deploy, e.g.
-#   genie_catalog_remap: {"dev_catalog.": "prod_catalog."}
-genie_catalog_remap: {}
+# Values for the {{ placeholders }} in agents/*.json. The export notebook
+# swaps these values for placeholders when exporting from this environment.
+genie_vars:
+  catalog: samples
+  schema: tpch
 
 # Agents to manage in this workspace (title is the idempotency key)
 genie_agents:

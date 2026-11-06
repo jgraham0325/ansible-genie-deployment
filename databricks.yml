@@ -1,0 +1,50 @@
+# Bundle for local development only: deploys the export notebook (and a job
+# that runs it) to your dev workspace. Promotion to other environments is done
+# by Ansible, not by this bundle, so there's deliberately just a dev target.
+bundle:
+  name: ansible-genie-deployment
+
+variables:
+  space_id:
+    description: Genie space to export
+    default: ""
+  agent_file:
+    description: Output path relative to the repo, e.g. agents/my_agent.json (defaults to the space title)
+    default: ""
+  env:
+    description: Inventory group the space is exported from (whose genie_vars become placeholders)
+    default: field_eng_east
+  repo_root:
+    description: Workspace Git folder to write into, e.g. /Workspace/Users/<you>/ansible-genie-deployment (defaults to the bundle's own files)
+    default: ""
+
+sync:
+  exclude:
+    - .venv
+    - state
+
+resources:
+  jobs:
+    export_genie_space:
+      name: export_genie_space
+      parameters:
+        - name: space_id
+          default: ${var.space_id}
+        - name: agent_file
+          default: ${var.agent_file}
+        - name: env
+          default: ${var.env}
+        - name: repo_root
+          default: ${var.repo_root}
+      tasks:
+        # No compute specified, so the notebook runs on serverless
+        - task_key: export
+          notebook_task:
+            notebook_path: ./notebooks/export_genie_space.py
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: field-eng-east

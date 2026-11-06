@@ -1,15 +1,10 @@
 - name: Build desired definition for "{{ agent.title }}"
   ansible.builtin.set_fact:
-    # Ansible may already have converted the JSON text to a dict when templating
-    _desired_space: "{{ _remapped if _remapped is mapping else _remapped | from_json }}"
+    # Ansible may already have converted the rendered JSON text to a dict
+    _desired_space: "{{ _rendered if _rendered is mapping else _rendered | from_json }}"
     _space_id: "{{ genie_space_ids[agent.title] | default('') }}"
   vars:
-    _remapped: >-
-      {%- set s = namespace(v=lookup('file', agent.file)) -%}
-      {%- for old, new in genie_catalog_remap.items() -%}
-      {%- set s.v = s.v | replace(old, new) -%}
-      {%- endfor -%}
-      {{ s.v }}
+    _rendered: "{{ lookup('ansible.builtin.template', agent.file, template_vars=genie_vars) }}"
 
 - name: Get current space
   ansible.builtin.uri:
